@@ -3,6 +3,7 @@
 RSS 抓取器
 
 负责从配置的 RSS 源抓取数据并转换为标准格式
+支持标准 RSS feed 和自定义爬虫（如汽车之家）
 """
 
 import time
@@ -16,6 +17,13 @@ import requests
 from .parser import RSSParser, ParsedRSSItem
 from trendradar.storage.base import RSSItem, RSSData
 from trendradar.utils.time import get_configured_time, is_within_days, DEFAULT_TIMEZONE
+
+# 导入汽车之家爬虫
+try:
+    from trendradar.crawler.autohome import create_autohome_fetcher
+    HAS_AUTOHOME = True
+except ImportError:
+    HAS_AUTOHOME = False
 
 
 @dataclass
@@ -137,6 +145,24 @@ class RSSFetcher:
         Returns:
             (条目列表, 错误信息) 元组
         """
+        # 检查是否是汽车之家（通过URL判断）
+        is_autohome = 'autohome.com.cn' in feed.url or feed.id == 'auto-home'
+
+        if is_autohome and HAS_AUTOHOME:
+            return self._fetch_autohome(feed)
+        else:
+            return self._fetch_rss(feed)
+
+    def _fetch_rss(self, feed: RSSFeedConfig) -> Tuple[List[RSSItem], Optional[str]]:
+        """
+        抓取标准 RSS feed
+
+        Args:
+            feed: RSS 源配置
+
+        Returns:
+            (条目列表, 错误信息) 元组
+        """
         try:
             response = self.session.get(feed.url, timeout=self.timeout)
             response.raise_for_status()
@@ -190,6 +216,50 @@ class RSSFetcher:
 
         except Exception as e:
             error = f"未知错误: {e}"
+            print(f"[RSS] {feed.name}: {error}")
+            return [], error
+
+    def _fetch_autohome(self, feed: RSSFeedConfig) -> Tuple[List[RSSItem], Optional[str]]:
+        """
+        抓取汽车之家新闻（使用专用爬虫）
+
+        Args:
+            feed: RSS 源配置
+
+        Returns:
+            (条目列表, 错误信息) 元组
+        """
+        if not HAS_AUTOHOME:
+            return [], "汽车之家爬虫未安装"
+
+        try:
+            # 将 feed 配置转换为汽车之家配置格式
+            feed_dict = {
+                "id": feed.id,
+                "name": feed.name,
+                "url": feed.url,
+                "enabled": feed.enabled,
+                "max_items": feed.max_items if feed.max_items > 0 else 50,
+                "max_age_days": feed.max_age_days,
+            }
+
+            # 创建汽车之家爬虫
+            fetcher = create_autohome_fetcher(
+                feed_config=feed_dict,
+                timeout=self.timeout,
+                use_proxy=self.use_proxy,
+                proxy_url=self.proxy_url,
+                timezone=self.timezone,
+                freshness_enabled=self.freshness_enabled,
+                default_max_age_days=self.default_max_age_days,
+            )
+
+            # 抓取数据
+            items, error = fetcher.fetch()
+            return items, error
+
+        except Exception as e:
+            error = f"汽车之家爬虫失败: {e}"
             print(f"[RSS] {feed.name}: {error}")
             return [], error
 
