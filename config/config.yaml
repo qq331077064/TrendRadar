@@ -129,11 +129,11 @@ rss:
       enabled: false                  # 禁用
 
     # 自定义源示例
-    # - id: "custom-feed"
-    #   name: "自定义源"
-    #   url: "https://example.com/feed.xml"
-    #   enabled: false
-    #   max_age_days: 0               # 示例：禁用过滤，推送所有文章
+    - id: "auto-home"
+      name: "汽车之家"
+      url: "https://www.autohome.com.cn/beijing/?from=m"
+      enabled: true
+      max_age_days: 0               # 示例：禁用过滤，推送所有文章
 
 
 # ===============================================================
